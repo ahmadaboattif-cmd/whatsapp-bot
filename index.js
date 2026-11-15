@@ -23,7 +23,6 @@ async function startBot() {
         auth: state
     });
 
-    // استقبال الرسائل وفلترة الروابط في الجروبات
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.fromMe) return;
@@ -48,10 +47,11 @@ async function startBot() {
 
         if (!messageBody) return;
 
-        // نظام حذف الروابط بحساسية عالية
+        // فحص الروابط
         const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-zA-Z0-9][-a-zA-Z0-90-9]+\.(com|net|org|me|io|gg|tk|ml|ga|cf))/gi;
         
         if (linkRegex.test(messageBody)) {
+            console.log("[+] Detected a link in group:", remoteJid);
             try {
                 const key = {
                     remoteJid: remoteJid,
@@ -60,9 +60,9 @@ async function startBot() {
                 };
                 
                 await sock.sendMessage(remoteJid, { delete: key });
-                console.log(`[+] Deleted a link successfully from group: ${remoteJid}`);
+                console.log("[+] Link deleted successfully!");
             } catch (err) {
-                console.error('Failed to delete link:', err);
+                console.error('Failed to delete link, error details:', err);
             }
         }
     });
