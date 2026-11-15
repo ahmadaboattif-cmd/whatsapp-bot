@@ -5,12 +5,15 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// تشغيل خادم الويب فوراً لمنع حدوث Timeout
 app.get('/', (req, res) => {
     res.send('Bot is running!');
 });
 
 app.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
+    // بدء تشغيل البوت بعد إقلاع السيرفر بثواني معدودة
+    setTimeout(startBot, 3000);
 });
 
 async function startBot() {
@@ -23,18 +26,20 @@ async function startBot() {
     });
 
     if (!sock.authState.creds.registered) {
-        const phoneNumber = "201553274163; // اكتب رقمك هنا بمفتاح الدولة وبدون علامة +
-        setTimeout(async () => {
+        const phoneNumber = "201553274163"; // اكتب رقمك هنا بمفتاح الدولة وبدون علامة +
+        try {
             let code = await sock.requestPairingCode(phoneNumber);
             console.log(`🔐 YOUR 8-DIGIT PAIRING CODE IS: ${code}`);
-        }, 4000);
+        } catch (error) {
+            console.error('Error requesting pairing code:', error);
+        }
     }
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect } = update;
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error)?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Connection closed due to ', lastDisconnect?.error, ', reconnecting ', shouldReconnect);
+            console.log('Connection closed, reconnecting...', shouldReconnect);
             if (shouldReconnect) {
                 startBot();
             }
@@ -45,5 +50,3 @@ async function startBot() {
 
     sock.ev.on('creds.update', saveCreds);
 }
-
-startBot();
