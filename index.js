@@ -1,6 +1,8 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const express = require('express');
+const yts = require('yt-search');
+const ytdl = require('@distube/ytdl-core');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -16,53 +18,104 @@ app.listen(PORT, () => {
 
 async function startBot() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    const { version } = await fetchLatestBaileysVersion();
     
     const sock = makeWASocket({
+        version,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
-        auth: state
+        auth: state,
+        browser: ['Ubuntu', 'Chrome', '20.0.04']
     });
 
-    sock.ev.on('messages.upsert', async ({ messages }) => {
-        const m = messages[0];
-        if (!m.message || m.key.fromMe) return;
-
-        const remoteJid = m.key.remoteJid;
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
         
-        // نتأكد إن الرسالة جاية جوه جروب
-        if (!remoteJid.endsWith('@g.us')) return;
+        for (const m of messages) {
+            if (!m.message || m.key.fromMe) continue;
 
-        let messageBody = '';
-        const messageType = Object.keys(m.message)[0];
+            const remoteJid = m.key.remoteJid;
+            const isGroup = remoteJid.endsWith('@g.us');
 
-        if (messageType === 'conversation') {
-            messageBody = m.message.conversation;
-        } else if (messageType === 'extendedTextMessage') {
-            messageBody = m.message.extendedTextMessage.text;
-        } else if (messageType === 'imageMessage' && m.message.imageMessage.caption) {
-            messageBody = m.message.imageMessage.caption;
-        } else if (messageType === 'videoMessage' && m.message.videoMessage.caption) {
-            messageBody = m.message.videoMessage.caption;
-        }
+            // استخراج النص من أي نوع رسالة
+            const messageType = Object.keys(m.message)[0];
+            let messageBody = '';
+            if (messageType === 'conversation') {
+                messageBody = m.message.conversation;
+            } else if (messageType === 'extendedTextMessage') {
+                messageBody = m.message.extendedTextMessage.text;
+            } else if (messageType === 'imageMessage') {
+                messageBody = m.message.imageMessage.caption || '';
+            } else if (messageType === 'videoMessage') {
+                messageBody = m.message.videoMessage.caption || '';
+            }
 
-        if (!messageBody) return;
+            if (!messageBody) continue;
 
-        // فحص الروابط
-        const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-zA-Z0-9][-a-zA-Z0-90-9]+\.(com|net|org|me|io|gg|tk|ml|ga|cf))/gi;
-        
-        if (linkRegex.test(messageBody)) {
-            console.log("[+] Detected a link in group:", remoteJid);
-            try {
-                const key = {
-                    remoteJid: remoteJid,
-                    id: m.key.id,
-                    participant: m.key.participant || m.participant
-                };
-                
-                await sock.sendMessage(remoteJid, { delete: key });
-                console.log("[+] Link deleted successfully!");
-            } catch (err) {
-                console.error('Failed to delete link, error details:', err);
+            // ==========================================
+            // 1. فلتر حذف الروابط في الجروبات (فوري)
+            // ==========================================
+            const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|(chat\.whatsapp\.com\/[^\s]+)|([a-zA-Z0-9-]+\.(com|net|org|me|io|gg|tk|ml|ga|cf|xyz|site|online))/gi;
+            
+            if (isGroup && linkRegex.test(messageBody)) {
+                try {
+                    const sender = m.key.participant || m.participant;
+                    await sock.sendMessage(remoteJid, {
+                        delete: {
+                            remoteJid: remoteJid,
+                            fromMe: false,
+                            id: m.key.id,
+                            participant: sender
+                        }
+                    });
+                    console.log(`[+] تم حذف رابط من الجروب بنجاح!`);
+                    continue; // نوقف باقي الأوامر لو الرسالة اتمسحت
+                } catch (err) {
+                    console.error('فشل حذف الرابط (تأكد إن البوت أدمن):', err);
+                }
+            }
+
+            // ==========================================
+            // 2. أمر البحث وتحميل الأغاني MP3
+            // ==========================================
+            const lowerBody = messageBody.trim().toLowerCase();
+            if (lowerBody.startsWith('.play ') || lowerBody.startsWith('شغل ')) {
+                const query = messageBody.replace(/^(\.play|شغل)\s+/i, '').trim();
+                if (!query) return;
+
+                try {
+                    await sock.sendMessage(remoteJid, { text: `⏳ جاري البحث عن: *${query}*...` }, { quoted: m });
+
+                    // البحث في يوتيوب
+                    const searchResults = await yts(query);
+                    const video = searchResults.videos[0];
+
+                    if (!video) {
+                        await sock.sendMessage(remoteJid, { text: '❌ ملقتش أي نتيجة للأغنية دي.' }, { quoted: m });
+                        continue;
+                    }
+
+                    await sock.sendMessage(remoteJid, { text: `🎵 جاري تحميل وإرسال: *${video.title}* (${video.timestamp})` }, { quoted: m });
+
+                    // تحميل الصوت وإرساله مباشرة كـ MP3
+                    const audioStream = ytdl(video.url, { filter: 'audioonly', quality: 'highestaudio' });
+                    const chunks = [];
+                    for await (const chunk of audioStream) {
+                        chunks.push(chunk);
+                    }
+                    const audioBuffer = Buffer.concat(chunks);
+
+                    await sock.sendMessage(remoteJid, {
+                        audio: audioBuffer,
+                        mimetype: 'audio/mp4',
+                        ptt: false // خليها true لو عايزها تتبعت كـ ريكورد (فويس نوت)
+                    }, { quoted: m });
+
+                    console.log(`[+] تم إرسال الأغنية: ${video.title}`);
+                } catch (error) {
+                    console.error('خطأ في تحميل الأغنية:', error);
+                    await sock.sendMessage(remoteJid, { text: '⚠️ حصلت مشكلة أثناء تحميل الأغنية، جرب اسم تاني.' }, { quoted: m });
+                }
             }
         }
     });
