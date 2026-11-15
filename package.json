@@ -1,15 +1,14 @@
-
- 
+{
   "name": "whatsapp-bot",
   "version": "1.0.0",
-  "description": "WhatsApp bot for links and music",
+  "description": "WhatsApp Bot",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
     "@whiskeysockets/baileys": "^6.7.5",
-    "pino": "^8.19.0",
-    "express": "^4.19.2"
+    "express": "^4.19.2",
+    "pino": "^8.19.0"
   }
 }
