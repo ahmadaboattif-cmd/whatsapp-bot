@@ -23,58 +23,47 @@ async function startBot() {
         auth: state
     });
 
-    if (!sock.authState.creds.registered) {
-        const phoneNumber = "201553274163"; // حط رقمك هنا بدون علامة +
-        setTimeout(async () => {
-            try {
-                let code = await sock.requestPairingCode(phoneNumber);
-                console.log(`🔐 YOUR 8-DIGIT PAIRING CODE IS: ${code}`);
-            } catch (error) {
-                console.error('Error requesting pairing code:', error);
-            }
-        }, 5000);
-    }
-
-    // استقبال الرسائل ومعالجة الأوامر (فلتر الروابط وأوامر البوت)
+    // استقبال الرسائل وفلترة الروابط في الجروبات
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const m = messages[0];
         if (!m.message || m.key.fromMe) return;
 
-        const messageType = Object.keys(m.message)[0];
+        const remoteJid = m.key.remoteJid;
+        
+        // نتأكد إن الرسالة جاية جوه جروب
+        if (!remoteJid.endsWith('@g.us')) return;
+
         let messageBody = '';
+        const messageType = Object.keys(m.message)[0];
 
         if (messageType === 'conversation') {
             messageBody = m.message.conversation;
         } else if (messageType === 'extendedTextMessage') {
             messageBody = m.message.extendedTextMessage.text;
+        } else if (messageType === 'imageMessage' && m.message.imageMessage.caption) {
+            messageBody = m.message.imageMessage.caption;
+        } else if (messageType === 'videoMessage' && m.message.videoMessage.caption) {
+            messageBody = m.message.videoMessage.caption;
         }
 
         if (!messageBody) return;
 
-        const remoteJid = m.key.remoteJid;
-
-        // 1. نظام حذف الروابط تلقائياً
+        // نظام حذف الروابط بحساسية عالية
         const linkRegex = /(https?:\/\/[^\s]+)|(www\.[^\s]+)|([a-zA-Z0-9][-a-zA-Z0-90-9]+\.(com|net|org|me|io|gg|tk|ml|ga|cf))/gi;
+        
         if (linkRegex.test(messageBody)) {
-            // التأكد إن الرسالة في جروب (بتنتهي بـ @g.us)
-            if (remoteJid.endsWith('@g.us')) {
-                try {
-                    // حذف الرسالة التي تحتوي على الروابط
-                    await sock.sendMessage(remoteJid, { delete: m.key });
-                    console.log(`[+] Deleted a link message from: ${m.key.participant || remoteJid}`);
-                } catch (err) {
-                    console.error('Failed to delete link:', err);
-                }
+            try {
+                const key = {
+                    remoteJid: remoteJid,
+                    id: m.key.id,
+                    participant: m.key.participant || m.participant
+                };
+                
+                await sock.sendMessage(remoteJid, { delete: key });
+                console.log(`[+] Deleted a link successfully from group: ${remoteJid}`);
+            } catch (err) {
+                console.error('Failed to delete link:', err);
             }
-        }
-
-        // 2. نظام الأوامر (مثل تحميل أو طلب الأغاني)
-        if (messageBody.startsWith('.play ') || messageBody.startsWith('شغل ')) {
-            const query = messageBody.replace(/^\.play\s*|^شغل\s*/, '');
-            await sock.sendMessage(remoteJid, { text: `🎵 جاري البحث عن طلبك: "${query}" وتحضير الملف الصوتي...` }, { quoted: m });
-            
-            // هنا بيتم ربط البحث أو جلب الرابط الصوتي (MP3) وإرساله للمستخدم
-            // ميزة جلب وتحميل الأغاني والملفات الصوتية جاهزة للتفاعل معي في أي وقت
         }
     });
 
