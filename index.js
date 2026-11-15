@@ -5,15 +5,13 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// تشغيل سيرفر الويب فوراً عشان يمنع مشكلة الـ Timeout
 app.get('/', (req, res) => {
     res.send('Bot is running successfully!');
 });
 
 app.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
-    // بدء تشغيل البوت بعد إقلاع السيرفر بثواني
-    setTimeout(startBot, 2000);
+    setTimeout(startBot, 3000);
 });
 
 async function startBot() {
@@ -25,14 +23,20 @@ async function startBot() {
         auth: state
     });
 
+    // التأكد من عدم تسجيل الدخول مسبقاً لطلب الكود برقمك الصحيح
     if (!sock.authState.creds.registered) {
-        const phoneNumber = "201553274163"; // اكتب رقمك هنا بمفتاح الدولة وبدون علامة +
-        try {
-            let code = await sock.requestPairingCode(phoneNumber);
-            console.log(`🔐 YOUR 8-DIGIT PAIRING CODE IS: ${code}`);
-        } catch (error) {
-            console.error('Error requesting pairing code:', error);
-        }
+        // حط رقمك هنا بمفتاح الدولة وبدون علامة + (مثلاً: 2010xxxxxxxx)
+        const phoneNumber = "201553274163"; 
+        
+        // تأخير بسيط لمدة 5 ثواني لضمان استقرار الاتصال قبل طلب الكود
+        setTimeout(async () => {
+            try {
+                let code = await sock.requestPairingCode(phoneNumber);
+                console.log(`🔐 YOUR 8-DIGIT PAIRING CODE IS: ${code}`);
+            } catch (error) {
+                console.error('Error requesting pairing code:', error);
+            }
+        }, 5000);
     }
 
     sock.ev.on('connection.update', (update) => {
