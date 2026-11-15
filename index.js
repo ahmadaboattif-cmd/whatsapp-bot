@@ -1,22 +1,27 @@
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const pino = require('pino');
 const express = require('express');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-// تشغيل خادم الويب فوراً لمنع حدوث Timeout
 app.get('/', (req, res) => {
     res.send('Bot is running!');
 });
 
 app.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
-    // بدء تشغيل البوت بعد إقلاع السيرفر بثواني معدودة
     setTimeout(startBot, 3000);
 });
 
 async function startBot() {
+    // مسح الجلسة القديمة لضمان توليد كود جديد نظيف
+    if (fs.existsSync('./auth_info_baileys')) {
+        fs.rmSync('./auth_info_baileys', { recursive: true, force: true });
+        console.log('Old session cleared!');
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
     
     const sock = makeWASocket({
@@ -28,8 +33,10 @@ async function startBot() {
     if (!sock.authState.creds.registered) {
         const phoneNumber = "201553274163"; // اكتب رقمك هنا بمفتاح الدولة وبدون علامة +
         try {
-            let code = await sock.requestPairingCode(phoneNumber);
-            console.log(`🔐 YOUR 8-DIGIT PAIRING CODE IS: ${code}`);
+            setTimeout(async () => {
+                let code = await sock.requestPairingCode(phoneNumber);
+                console.log(`🔐 YOUR 8-DIGIT PAIRING CODE IS: ${code}`);
+            }, 5000);
         } catch (error) {
             console.error('Error requesting pairing code:', error);
         }
