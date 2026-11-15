@@ -5,12 +5,14 @@ const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
 
+// تشغيل سيرفر الويب فوراً عشان يمنع مشكلة الـ Timeout
 app.get('/', (req, res) => {
-    res.send('Bot is running!');
+    res.send('Bot is running successfully!');
 });
 
 app.listen(PORT, () => {
     console.log(`Server is listening on port ${PORT}`);
+    // بدء تشغيل البوت بعد إقلاع السيرفر بثواني
     setTimeout(startBot, 2000);
 });
 
